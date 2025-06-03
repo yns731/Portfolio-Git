@@ -1,82 +1,115 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Signature Pad</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.5/signature_pad.umd.min.js"></script>
-
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f4f4f4;
-            text-align: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            width: 400px;
-            margin: auto;
-        }
-        canvas {
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            width: 100%;
-            height: 150px;
-            background: white;
-        }
-        button {
-            width: 100%;
-            padding: 10px;
-            margin-top: 10px;
-            border: none;
-            cursor: pointer;
-            border-radius: 5px;
-            color: white;
-        }
-        .clear-btn {
-            background: red;
-        }
-        .submit-btn {
-            background: #007bff;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Signature vers Airtable</title>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.6/dist/signature_pad.umd.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+      background: #f4f4f4;
+    }
+    .container {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      padding: 20px;
+      width: 400px;
+      margin: auto;
+    }
+    canvas {
+      border: 2px solid #ccc;
+      border-radius: 5px;
+      width: 100%;
+      height: 150px;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px;
+      width: 100%;
+      border: none;
+      color: white;
+      border-radius: 5px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .clear-btn { background-color: #dc3545; }
+    .submit-btn { background-color: #007bff; }
+  </style>
 </head>
 <body>
+  <div class="container">
+    <h2>Signature du candidat</h2>
+    <canvas id="signaturePad"></canvas>
+    <button class="clear-btn" onclick="signaturePad.clear()">Effacer</button>
+    <button class="submit-btn" onclick="submitSignature()">Envoyer</button>
+  </div>
 
-    <div class="container">
-        <h2>Signature Pad</h2>
-        
-        <canvas id="signatureCanvas"></canvas>
-        
-        <button class="clear-btn" onclick="clearSignature()">Clear Signature</button>
-        <button class="submit-btn" onclick="submitSignature()">Submit</button>
+  <script>
+  const canvas = document.getElementById("signaturePad");
+  const signaturePad = new SignaturePad(canvas);
 
-        <form id="signatureForm" action="save_signature.php" method="POST">
-            <input type="hidden" id="signatureData" name="signature">
-        </form>
-    </div>
+  async function submitSignature() {
+    if (signaturePad.isEmpty()) {
+      alert("Merci de signer avant d’envoyer.");
+      return;
+    }
 
-    <script>
-        let canvas = document.getElementById('signatureCanvas');
-        let signaturePad = new SignaturePad(canvas);
+    const base64 = signaturePad.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
 
-        function clearSignature() {
-            signaturePad.clear();
+    // 🔑 API key ImgBB (remplace avec la tienne si nécessaire)
+    const imgbbApiKey = "2bcebf1e8648e7b1525edae8a6c6d731";
+
+    // Upload vers ImgBB
+    const imgbbResponse = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({ image: base64 })
+    });
+
+    const imgbbData = await imgbbResponse.json();
+
+    if (!imgbbData.success) {
+      alert("Erreur lors de l’upload vers ImgBB");
+      console.error(imgbbData);
+      return;
+    }
+
+    const imageUrl = imgbbData.data.url;
+
+    // Envoi vers Airtable
+    const token = "patLYGSG8r4DEAz46.51b2b4e2da78ce3c35cbf20deb4910a9670eea2f7b57ccc9d3e0d4aa1d1fec5b";
+    const baseId = "appB2dchlUmZpzs0u";
+    const tableName = "Copie de Candidats";
+
+    const airtableResponse = await fetch(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        fields: {
+          Sign: [
+            { url: imageUrl }
+          ]
         }
+      })
+    });
 
-        function submitSignature() {
-            if (!signaturePad.isEmpty()) {
-                document.getElementById('signatureData').value = signaturePad.toDataURL();
-                document.getElementById('signatureForm').submit();
-            } else {
-                alert("Please sign before submitting!");
-            }
-        }
-    </script>
-
+    if (airtableResponse.ok) {
+      alert("Signature envoyée dans Airtable !");
+      signaturePad.clear();
+    } else {
+      alert("Erreur lors de l'envoi à Airtable.");
+      console.error(await airtableResponse.text());
+    }
+  }
+</script>
 </body>
 </html>
+
